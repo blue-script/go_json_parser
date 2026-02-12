@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -176,6 +177,12 @@ func parseValue(data []byte, pos int) (JSONValue, int, error) {
 			return nil, pos, errors.New(ErrorInvalidJson)
 		}
 
+	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		result, pos, err = parseNumber(data, pos)
+		if err != nil {
+			return nil, pos, errors.New(ErrorInvalidJson)
+		}
+
 	default:
 		return nil, pos, errors.New(ErrorInvalidJson)
 	}
@@ -198,6 +205,29 @@ func parseString(data []byte, pos int) (string, int, error) {
 	return "", pos, errors.New(ErrorInvalidJson)
 }
 
+func parseNumber(data []byte, pos int) (int, int, error) {
+	first := pos
+
+	if data[pos] == '-' {
+		pos++
+	}
+
+	for pos < len(data) && data[pos] >= '0' && data[pos] <= '9' {
+		pos++
+	}
+
+	if first == pos || (data[first] == '-' && first+1 == pos) {
+		return 0, pos, errors.New(ErrorInvalidJson)
+	}
+
+	num, err := strconv.Atoi(string(data[first:pos]))
+	if err != nil {
+		return 0, pos, errors.New(ErrorInvalidJson)
+	}
+
+	return num, pos, nil
+}
+
 func parseArray(data []byte, pos int) (JSONValue, int, error) {
 	// var currentValue JSONValue
 	if pos >= len(data) {
@@ -218,7 +248,47 @@ func parseArray(data []byte, pos int) (JSONValue, int, error) {
 		return []any{}, pos + 1, nil
 	}
 
-	return nil, pos, errors.New(ErrorInvalidJson)
+	var value JSONValue
+	var err error
+
+	value, pos, err = parseValue(data, pos)
+	if err != nil {
+		return nil, pos, errors.New(ErrorInvalidJson)
+	}
+
+	pos = skipSpaces(data, pos)
+	if pos >= len(data) {
+		return nil, pos, errors.New(ErrorInvalidJson)
+	}
+
+	slice := []any{value}
+
+	for {
+		pos = skipSpaces(data, pos)
+		if pos >= len(data) {
+			return nil, pos, errors.New(ErrorInvalidJson)
+		}
+
+		switch data[pos] {
+		case ',':
+			pos++
+			pos = skipSpaces(data, pos)
+			if pos >= len(data) {
+				return nil, pos, errors.New(ErrorInvalidJson)
+			}
+
+			value, pos, err = parseValue(data, pos)
+			if err != nil {
+				return nil, pos, errors.New(ErrorInvalidJson)
+			}
+
+			slice = append(slice, value)
+		case ']':
+			return slice, pos + 1, nil
+		default:
+			return nil, pos, errors.New(ErrorInvalidJson)
+		}
+	}
 }
 
 func skipSpaces(data []byte, pos int) int {
@@ -364,14 +434,14 @@ CommandLoop:
 }
 
 // func test() {
-// 	input := `{"foo": {"bar": {"baz": 42, "qux": "hello"}}}`
-// 	// input := `[{"foo":"1"},{"foo":"2"},{"foo":"3"}]`
+// 	// input := `{"foo": {"bar": {"baz": 42, "qux": "hello"}}}`
+// 	input := `[{"foo":"1"},{"foo":"2"},{"foo":"3"}]`
 // 	result, err := NewJSONParser([]byte(input)).Parse()
 // 	if err != nil {
 // 		log.Fatalln("Error: invalid JSON")
 // 	}
-// 	path := []string{"foo", "bar"}
-// 	// path := []string{"1"}
+// 	// path := []string{"foo", "bar"}
+// 	path := []string{"1"}
 // 	iter, err := PathIterator(result, path...)
 // 	if err != nil {
 // 		log.Fatalln("Error:", err)
